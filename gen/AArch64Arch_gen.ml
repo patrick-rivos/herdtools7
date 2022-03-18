@@ -441,7 +441,10 @@ let overwrite_value v ao w = match ao with
 
     let pp = AArch64PteVal.pp_v
 
-    let default = AArch64PteVal.default
+    let default valid loc =
+      let pte = AArch64PteVal.default loc in
+      if valid then pte
+      else { pte with AArch64PteVal.valid=0; }
 
     let compare = AArch64PteVal.compare
 

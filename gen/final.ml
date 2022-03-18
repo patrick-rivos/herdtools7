@@ -85,8 +85,6 @@ module Make : functor (O:Config) -> functor (C:ArchRun.S) ->
     let do_kvm = Variant_gen.is_kvm O.variant
 
     type v = I of int | S of string | P of C.A.PteVal.t
-    let pte_def = P (C.A.PteVal.default "*")
-    let () = ignore pte_def
 
     module VSet =
       MySet.Make

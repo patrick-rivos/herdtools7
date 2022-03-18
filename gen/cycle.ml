@@ -89,10 +89,13 @@ module type S = sig
  val resolve_edges : edge list -> edge list * node
 
 (* Finish edge cycle, adding complete events, returns initial environment *)
-  val finish : node -> (string * Code.v) list
+ type initval = V of  Code.v | P of PteVal.t
+ type initvar = string
+ type initenv =  (initvar * initval) list
+ val finish : node -> initenv
 
 (* Composition of the two more basic steps above *)
-  val make : edge list -> edge list * node * Code.env
+  val make : edge list -> edge list * node * initenv
 
 (* split cycle amoungst processors *)
   val split_procs : node -> node list list
@@ -104,7 +107,7 @@ module type S = sig
   val last_ptes : node -> (string * PteVal.t) list
 
 (* All locations *)
-  val get_globals : ?init:Code.env -> node -> string list
+  val get_globals : ?init:initenv -> node -> string list
 
 (* All (modified) code labels *)
   val get_labels : node -> string list
@@ -155,7 +158,7 @@ module Make (O:Config) (E:Edge.S) :
         idx : int ;
         pte : PteVal.t }
 
-  let pte_default = PteVal.default "*"
+  let pte_default = PteVal.default true "*"
 
   let evt_null =
     { loc=Code.loc_none ; ord=0; tag=0;
@@ -519,8 +522,10 @@ module CoSt = struct
 end
 
 let pte_val_init loc = match loc with
-| Code.Data loc when do_kvm -> PteVal.default loc
-| _ -> pte_default
+  | Code.Data loc when do_kvm ->
+     let valid = not (O.variant Variant_gen.InitInvalid) in
+     PteVal.default valid loc
+  | _ -> pte_default
 
 (****************************)
 (* Add events in edge cycle *)
@@ -984,6 +989,10 @@ let set_read_v nss =
 
 (* zyva... *)
 
+type initval = V of  Code.v | P of PteVal.t
+type initvar = Ident of string | PteIdent of string
+type initenv =  (initvar * initval) list
+
 let finish n =
   let st = (0,0),Env.empty in
 (* Set locations *)
@@ -1032,7 +1041,13 @@ let finish n =
                 (Code.pp_loc loc) v) vs))
   end ;
   if O.variant Variant_gen.Self then check_fetch n ;
-  initvals
+  List.fold_right
+    (fun (loc,i) k ->
+      if do_kvm && O.variant Variant_gen.InitInvalid then
+        (Ident loc,V i)::(PteIdent loc,P (pte_val_init (Code.Data loc)))::k
+      else
+        (Ident loc,V i)::k)
+  initvals []
 
 
 (* Re-extract edges, with irelevant directions solved *)
@@ -1343,7 +1358,12 @@ let rec group_rec x ns = function
 
 
   let get_globals ?(init=[]) m =
-    let init = List.map (fun (loc,_) -> loc) init in
+    let init =
+      List.fold_right
+        (fun (loc,_) k ->
+          match loc with
+          | Ident loc -> loc::k
+          | PteIdent _ -> k) init [] in
     let code =
       get_rec
         (fun loc k -> match loc with Data loc -> loc::k | Code _ -> k)

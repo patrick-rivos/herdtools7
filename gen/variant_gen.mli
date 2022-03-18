@@ -38,6 +38,8 @@ type t =
   | KVM | FullKVM
 (* Do not  observe faults, in KVM mode *)
   | NoFault
+(* Start with (some) invalid ptes *)
+  | InitInvalid
 (* Neon AArch64 extension *)
   | Neon
 (* Constrained Unpredictable, ie generate tests thar may exhibit
